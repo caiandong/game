@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+    <link rel="stylesheet" href="./css/index.css">
+    <style>
+    .load-msg {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        font-size: 40px;
+        color: #666;
+        -webkit-transform: translate3d(-50%, -50%, 0);
+        transform: translate3d(-50%, -50%, 0);
+    }
+    </style>
+</head>
+<body style="background:#dbdbdb;">
+<span class="load-msg" id="load-msg"></span>    
+<canvas id="gameView" width="750" height="1206" class="game-bg"></canvas>
+<script src="./js/flexible.js"></script>
+<script src="./js/createjs.js"></script>  <!-- createjs库引入 -->
+<script src="./js/canvas.js"></script>
+<script>
+/* cad 2017-07-28
+ * JSON数据交换(前后端)格式
+ * 属性和方法的集合 Object
+ * JSON Object 键值对
+ */
+// carGame 游戏对象  命名空间 更安全
+// class new 传统的面向对象
+var carGame = {
+    // createjs 游戏框架 canvas网页
+    stage: new createjs.Stage('gameView'),
+    queue: null,
+    // 容器， 在里面放更多资源， 就有立足点 div + css
+    container: new createjs.Container(),
+    image1: new createjs.Bitmap('./img/bg.png'),
+    image2: new createjs.Bitmap('./img/bg.png'),
+    carBody: null, //属性
+    tempRedArray: [],
+    bgSpeed: 4,
+    redText: null,
+    initRed: 0,
+    tempImgArr: [new createjs.Bitmap('./img/red.png'), new createjs.Bitmap('./img/boom.png')],
+    init: function() {
+        this.redText = new createjs.Text('已捡到红包个数:' + this.initRed, '28px Arial', '#ff7700');
+        this.redText.x = 50;
+        this.redText.y = 10;
+        var roadHtml = document.createElement('div');
+        roadHtml.id = 'road';
+        document.body.appendChild(roadHtml);
+        var roadDom = new createjs.DOMElement(roadHtml);
+        // 位于看到的背景图片的正下方
+        this.image2.y = -this.stage.canvas.height;
+        var carImg = './img/player.png';
+        this.carBody = new createjs.Bitmap(carImg);
+        this.carBody.scaleX = .9;
+        this.carBody.scaleY = .9;
+        this.carBody.x = 324;
+        this.carBody.y = this.stage.canvas.height-230;
+        // 台子搭好了
+        // 预加载资源
+        // 资源：bg car hongbao zhadan 两个音乐 
+        // img.src
+        // img.onload
+        // canvas 资源加载完成了，才能继续
+        // 预加队列
+        this.queue = new createjs.LoadQueue();
+        // 加载 配置的方式 manifest 本地要缓存的资源
+        // 用户访问我们的游戏时，客户端client
+        // server端 图片资源，声音资源 server去到client端
+        // load 资源就进入了manifest 客户端的一个折子
+        // 加入音乐
+        this.queue.installPlugin(createjs.Sound);
+        this.queue.loadManifest([
+            {
+                src: './mp3/boom.mp3',
+                id: 'sound'
+            },{
+                src: './mp3/victory.mp3',
+                id: 'victory'
+            },{
+                src: './img/bg.png',
+                id: 'bigBg'
+            }
+        ])
+        var that = this;
+        // 在加载过程中不断地执行
+        this.queue.on('progress', function() {
+            document.querySelector('#load-msg').innerText = '加载中' + parseInt(that.queue.progress*100) + '%'
+            if(parseInt(that.queue.progress*100) === 100) {
+                setTimeout(function() {
+                    document.querySelector('#load-msg').style.display = 'none';
+                }, 1000);            
+            }
+        })
+        this.queue.addEventListener('complete', function() {
+            // alert('加载完成...');
+            // 友好的api 快速的canvas游戏编程
+            createjs.Sound.play("victory");
+            that.stage.addChild(that.container);
+            that.container.addChild(that.image1);
+            that.container.addChild(that.image2);
+            that.container.addChild(that.carBody);
+            that.container.addChild(that.redText);
+            // 每秒60帧 tick帧刷新事件
+            that.moveCar();
+            that.createImgs();
+            createjs.Ticker.addEventListener("tick", function() {
+                // 背景图片滚动 同样的两张图片，一张位于正下方
+                that.handleTick(that.image1,that.image2)
+                that.stage.update();
+            })
+            createjs.Ticker.setFPS(60);
+        })
+    },
+    handleTick: function(image1, image2) {
+        // 每秒60帧，一直在绘制
+        // 动画效果只要改变图片的y坐标就好了
+        image1.y += this.bgSpeed;
+        image2.y += this.bgSpeed;
+        if(Math.abs(image1.y) >= this.stage.canvas.height) {
+            image1.y = 0;
+            image2.y = -this.stage.canvas.height;
+        }
+    },
+    arrayUnique: function (arr) {//数组去重
+        arr.sort(function (a, b) {
+            return a - b;
+        });
+        var result = [arr[0]];
+        for (var i = 1; i < arr.length; i++) {
+            if (arr[i] !== result[result.length - 1]) {
+                result.push(arr[i]);
+            }
+        }
+        return result;
+    },
+    handleImg: function(obj) {
+        var pt = obj.localToLocal(Math.random()*100, Math.random()*100, this.carBody);
+        if(this.carBody.hitTest(pt.x, pt.y)) {
+            obj.visible = false;
+            if(/red/.test(obj.image.src)){
+                // 红包
+                console.log('收到一个红包！');
+                obj.tickEnable = false;
+                this.tempRedArray.push(obj.id);
+                var temp = this.arrayUnique(this.tempRedArray); //arrayUnique数组去重
+                this.initRed = temp.length;
+                this.redText.text = "已抢到红包个数:" + this.initRed;
+            } else {
+                // 炸弹
+                createjs.Sound.play('sound');
+                createjs.Sound.removeSound('victory');
+                alert('GAME OVER!');
+                createjs.Sound.stop();
+                createjs.Ticker.removeAllEventListeners();
+                location.reload();
+
+            }
+        }
+    },
+    // 生出红包或者炸弹
+    createImgs: function() {
+        var index = parseInt(Math.random()*2);
+        var red = this.tempImgArr[index].clone();
+        var roadDom = document.getElementById('road');
+        var minX = Math.ceil( roadDom.offsetLeft*(750/document.body.clientWidth));
+        var maxX = minX * 3;
+        red.x = minX + (maxX-minX)*Math.random()*0.72;
+        red.y = 150;
+        this.container.addChild(red);
+        var that = this;
+        createjs.Tween.get(red).to({
+            y:this.stage.canvas.height
+        },2500).addEventListener('change', function() {
+            that.handleImg(red);
+            if(red.y >= that.stage.canvas.height){
+                that.createImgs();
+            }
+        })
+    },
+    // 移动小车
+    moveCar: function() {
+        var that = this;
+        window.addEventListener('keydown', function(event) {
+            var key = event.keyCode;
+            if(key == 37){
+                // 向左
+                if(that.carBody.x < 222) return;
+                that.carBody.x -= 51;
+            } else if (key == 39){
+                // 向右
+                if(that.carBody.x > 426) return;
+                that.carBody.x += 51;
+            }
+        });
+    },
+}
+
+window.onload = function() {
+    carGame.init();
+}
+</script>
+</body>
+</html>

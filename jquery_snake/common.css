@@ -1,0 +1,15 @@
+#pannel table {
+  border-collapse: collapse;
+  margin-bottom: 10px;
+}
+#pannel table td {
+  width: 10px;
+  height: 10px;
+  border: 1px solid #000;
+}
+#pannel table td.food {
+  background: #008000;
+}
+#pannel table td.body {
+  background: #f60;
+}
